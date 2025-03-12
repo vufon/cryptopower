@@ -17,6 +17,7 @@ import (
 	"github.com/crypto-power/cryptopower/ui"
 	_ "github.com/crypto-power/cryptopower/ui/assets"
 	"github.com/crypto-power/cryptopower/ui/load"
+	"github.com/crypto-power/cryptopower/ui/service"
 )
 
 const (
@@ -122,7 +123,8 @@ func main() {
 		// Exit the app.
 		os.Exit(0)
 	}()
-
+	// start register keep alive service
+	service.RegisterKeepAliveService()
 	// Start the GUI frontend.
 	app.Main()
 }
