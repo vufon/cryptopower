@@ -3,8 +3,6 @@ package wallet
 import (
 	"context"
 	"fmt"
-	"path/filepath"
-	"strconv"
 
 	"gioui.org/io/event"
 	"gioui.org/io/key"
@@ -716,33 +714,6 @@ func (swmp *SingleWalletMasterPage) totalAssetBalance(gtx C) D {
 	return components.LayoutBalanceWithUnitSize(gtx, swmp.Load, swmp.walletBalance.String(), textSize)
 }
 
-func (swmp *SingleWalletMasterPage) postTransactionNotification(t *sharedW.Transaction) {
-	var notification string
-	wal := swmp.selectedWallet
-	switch t.Type {
-	case dcr.TxTypeRegular:
-		if t.Direction != dcr.TxDirectionReceived {
-			return
-		}
-		// remove trailing zeros from amount and convert to string
-		amount := strconv.FormatFloat(wal.ToAmount(t.Amount).ToCoin(), 'f', -1, 64)
-		notification = values.StringF(values.StrDcrReceived, amount)
-	case dcr.TxTypeVote:
-		reward := strconv.FormatFloat(wal.ToAmount(t.VoteReward).ToCoin(), 'f', -1, 64)
-		notification = values.StringF(values.StrTicketVoted, reward)
-	case dcr.TxTypeRevocation:
-		notification = values.String(values.StrTicketRevoked)
-	default:
-		return
-	}
-
-	if swmp.AssetsManager.OpenedWalletsCount() > 1 {
-		notification = fmt.Sprintf("[%s] %s", wal.GetWalletName(), notification)
-	}
-
-	initializeBeepNotification(notification)
-}
-
 func (swmp *SingleWalletMasterPage) postProposalNotification(propName string, status libutils.ProposalStatus) {
 	proposalNotification := swmp.selectedWallet.ReadBoolConfigValueForKey(sharedW.ProposalNotificationConfigKey, false) ||
 		!swmp.AssetsManager.IsPrivacyModeOn()
@@ -761,20 +732,7 @@ func (swmp *SingleWalletMasterPage) postProposalNotification(propName string, st
 	default:
 		notification = values.StringF(values.StrNewProposalUpdate, propName)
 	}
-	initializeBeepNotification(notification)
-}
-
-func initializeBeepNotification(n string) {
-	absoluteWdPath, err := utils.GetAbsolutePath()
-	if err != nil {
-		log.Error(err.Error())
-	}
-
-	err = beeep.Notify(values.String(values.StrAppWallet), n,
-		filepath.Join(absoluteWdPath, "ui/assets/decredicons/ic_dcr_qr.png"))
-	if err != nil {
-		log.Info("could not initiate desktop notification, reason:", err.Error())
-	}
+	utils.PushAppNotifications(notification)
 }
 
 // listenForNotifications starts a goroutine to watch for notifications
@@ -795,13 +753,6 @@ func (swmp *SingleWalletMasterPage) listenForNotifications(listenForSubpage func
 	txAndBlockNotificationListener := &sharedW.TxAndBlockNotificationListener{
 		OnTransaction: func(walletID int, transaction *sharedW.Transaction) {
 			swmp.updateBalance()
-			if swmp.AssetsManager.IsTransactionNotificationsOn() {
-				// TODO: SPV wallets only receive mempool tx ntfn for txs that
-				// were broadcast by the wallet. We should probably be posting
-				// desktop ntfns for txs received from external parties, which
-				// will can be gotten from the OnTransactionConfirmed callback.
-				swmp.postTransactionNotification(transaction)
-			}
 			swmp.ParentWindow().Reload()
 			listenForSubpage(walletID)
 		},

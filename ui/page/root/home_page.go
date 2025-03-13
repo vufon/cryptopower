@@ -212,6 +212,7 @@ func (hp *HomePage) OnNavigatedTo() {
 	if hp.isUpdateAPIAllowed() {
 		go hp.checkForUpdates()
 	}
+
 	// When the new tx has been registered
 	hp.AssetsManager.ListenForTxAndBlockNotification(func(walletID int) {
 		go hp.CalculateAssetsUSDBalance()

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"decred.org/dcrdex/dex/encode"
 	"github.com/crypto-power/cryptopower/libwallet/assets/btc"
@@ -18,6 +19,7 @@ import (
 	"github.com/crypto-power/cryptopower/libwallet/utils"
 	libutils "github.com/crypto-power/cryptopower/libwallet/utils"
 	"github.com/crypto-power/cryptopower/ui/cryptomaterial"
+	"github.com/crypto-power/cryptopower/ui/notify"
 	"github.com/crypto-power/cryptopower/ui/values"
 	"github.com/shirou/gopsutil/mem"
 
@@ -30,6 +32,8 @@ import (
 
 // ZeroBytes use for clearing a password or seed byte slice.
 var ZeroBytes = encode.ClearBytes
+var NotificationList = make([]notify.Notification, 0)
+var Mu sync.Mutex
 
 // the length of name should be 20 characters
 func ValidateLengthName(name string) bool {
@@ -110,6 +114,70 @@ func ComputePasswordStrength(pb *cryptomaterial.ProgressBarStyle, th *cryptomate
 	}
 }
 
+// Create new normal notifier (no icon)
+func CreateNewNotifier() (notifier notify.Notifier, err error) {
+	notifier, err = notify.NewNotifier()
+	return
+}
+
+// PushAppNotifications: default app title, default app icon
+func PushAppNotifications(content string) error {
+	return PushNotifications(values.String(values.StrAppWallet), content)
+}
+
+// PushAppNotificationsWithIcon: default app title, with customize icon
+func PushAppNotificationsWithIcon(content, icon string) error {
+	return PushNotificationsWithIcon(values.String(values.StrAppWallet), content, icon)
+}
+
+// Push notification with icon (For windows)
+func PushNotificationsWithIcon(title, content, iconPath string) error {
+	notifier, err := CreateNewNotifierWithIcon(iconPath)
+	if err != nil {
+		log.Error(err.Error())
+		return err
+	}
+	go notifier.CreateNotification(title, content)
+	return nil
+}
+
+// Push notification
+func PushNotifications(title, content string) error {
+	// use icon of cryptopower
+	appIcon, err := GetAssetFilePath("ui/assets/decredicons/appicon.png")
+	if err != nil {
+		log.Error(err.Error())
+		return err
+	}
+	notifier, err := CreateNewNotifierWithIcon(appIcon)
+	if err != nil {
+		log.Error(err.Error())
+		return err
+	}
+	go notifier.CreateNotification(title, content)
+	return nil
+}
+
+// Create and push transaction notification
+func PostTransactionNotification(notification string, assetType libutils.AssetType) {
+	// push notification
+	walIcon, err := GetWalletNotifyIconPath(libutils.AssetType(assetType))
+	if err != nil {
+		log.Error(err.Error())
+		return
+	}
+	PushAppNotificationsWithIcon(notification, walIcon)
+}
+
+// Get absolute file path from relative path
+func GetAssetFilePath(relativePath string) (absoluteFilePath string, err error) {
+	absoluteWdPath, err := GetProjectPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(absoluteWdPath, relativePath), nil
+}
+
 func GetAbsolutePath() (string, error) {
 	ex, err := os.Executable()
 	if err != nil {
@@ -122,6 +190,15 @@ func GetAbsolutePath() (string, error) {
 	}
 
 	return path.Dir(exSym), nil
+}
+
+// Get app absolute path
+func GetProjectPath() (string, error) {
+	projectPath, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return projectPath, nil
 }
 
 func SplitSingleString(text string, index int) string {
@@ -191,4 +268,24 @@ func GetNumberOfRAM() (int, error) {
 	}
 	// Convert bytes to gigabytes
 	return int(vmStat.Total / (1024 * 1024 * 1024)), nil
+}
+
+// Get the icon path for the asset type used to display the report.
+func GetWalletNotifyIconPath(assetType libutils.AssetType) (string, error) {
+	var icon string
+	switch assetType.ToStringLower() {
+	case libutils.BTCWalletAsset.ToStringLower():
+		icon = "logo_btc.png"
+	case libutils.DCRWalletAsset.ToStringLower():
+		icon = "ic_dcr_qr.png"
+	case libutils.LTCWalletAsset.ToStringLower():
+		icon = "ltc.png"
+	default:
+		icon = "#"
+	}
+	walIcon, err := GetAssetFilePath("ui/assets/decredicons/" + icon)
+	if err != nil {
+		return "", err
+	}
+	return walIcon, nil
 }

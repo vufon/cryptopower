@@ -19,13 +19,16 @@ import (
 	"golang.org/x/text/message"
 
 	"github.com/crypto-power/cryptopower/app"
+	sharedW "github.com/crypto-power/cryptopower/libwallet/assets/wallet"
 	libutils "github.com/crypto-power/cryptopower/libwallet/utils"
 	"github.com/crypto-power/cryptopower/ui/assets"
 	"github.com/crypto-power/cryptopower/ui/cryptomaterial"
+	"github.com/crypto-power/cryptopower/ui/lifecycle"
 	"github.com/crypto-power/cryptopower/ui/load"
 	"github.com/crypto-power/cryptopower/ui/modal"
 	"github.com/crypto-power/cryptopower/ui/notification"
 	"github.com/crypto-power/cryptopower/ui/page"
+	"github.com/crypto-power/cryptopower/ui/utils"
 	"github.com/crypto-power/cryptopower/ui/values"
 )
 
@@ -103,7 +106,15 @@ func CreateWindow(appInfo *load.AppInfo) (*Window, error) {
 
 	// Set DEX ctx to enable initializing dex from any page.
 	appInfo.AssetsManager.UpdateDEXCtx(win.ctx)
-
+	// register push notification for wallets
+	appInfo.AssetsManager.ListenForAppNotification(func(walletID int, transaction *sharedW.Transaction) {
+		if appInfo.AssetsManager.IsTransactionNotificationsOn() {
+			// get notifications
+			notification, assetType := appInfo.AssetsManager.GetWalletNotification(walletID, transaction)
+			// post notifications
+			go utils.PostTransactionNotification(notification, assetType)
+		}
+	})
 	return win, nil
 }
 
@@ -255,6 +266,8 @@ func (win *Window) HandleEvents() {
 			case giouiApp.FrameEvent:
 				ops := win.handleFrameEvent(evt)
 				evt.Frame(ops)
+			case giouiApp.ViewEvent:
+				lifecycle.RegisterAppLifecycle()
 			default:
 				log.Tracef("Unhandled window event %v\n", e)
 			}

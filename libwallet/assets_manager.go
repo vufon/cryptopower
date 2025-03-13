@@ -39,6 +39,7 @@ const LogFilename = "cryptopower.log"
 
 // assetIdentifier use for listen balance of all wallet changed
 const assetIdentifier = "assets_manager"
+const appIndentifier = "app_notification"
 
 const BoltDB = "bdb"        // Bolt db driver
 const BadgerDB = "badgerdb" // Badger db driver
@@ -1096,6 +1097,54 @@ func (mgr *AssetsManager) ListenForRate(listen func()) {
 	}
 }
 
+// Listener for new tx arrived
+func (mgr *AssetsManager) ListenForAppNotification(listen func(int, *sharedW.Transaction)) {
+	txAndBlockNotificationListener := &sharedW.TxAndBlockNotificationListener{
+		OnTransaction: func(walletID int, transaction *sharedW.Transaction) {
+			listen(walletID, transaction)
+		},
+	}
+
+	// add tx listener
+	for _, wallet := range mgr.AllWallets() {
+		if !wallet.IsNotificationListenerExist(appIndentifier) {
+			if err := wallet.AddTxAndBlockNotificationListener(txAndBlockNotificationListener, appIndentifier); err != nil {
+				log.Errorf("Can't listen tx and block notification for %s wallet", wallet.GetWalletName())
+			}
+		}
+	}
+}
+
+// Get tx notification when new tx arrived
+func (mgr *AssetsManager) GetWalletNotification(walletID int, tx *sharedW.Transaction) (notification string, assetType libutils.AssetType) {
+	wal := mgr.WalletWithID(walletID)
+	assetType = wal.GetAssetType()
+	if assetType == libutils.DCRWalletAsset {
+		switch tx.Type {
+		case dcr.TxTypeRegular:
+			if tx.Direction != dcr.TxDirectionReceived {
+				return
+			}
+			// remove trailing zeros from amount and convert to string
+			amount := strconv.FormatFloat(wal.ToAmount(tx.Amount).ToCoin(), 'f', -1, 64)
+			notification = values.StringF(values.StrDcrReceived, amount)
+		case dcr.TxTypeVote:
+			reward := strconv.FormatFloat(wal.ToAmount(tx.VoteReward).ToCoin(), 'f', -1, 64)
+			notification = values.StringF(values.StrTicketVoted, reward)
+		case dcr.TxTypeRevocation:
+			notification = values.String(values.StrTicketRevoked)
+		default:
+			return
+		}
+	} else {
+		amount := strconv.FormatFloat(wal.ToAmount(tx.Amount).ToCoin(), 'f', -1, 64)
+		notification = values.StringF(values.StrAmountReceived, amount, assetType.String())
+	}
+
+	notification = fmt.Sprintf("[%s] %s", wal.GetWalletName(), notification)
+	return
+}
+
 func (mgr *AssetsManager) RemoveAssetChange() {
 	// Remove all listener on tx notification
 	for _, wallet := range mgr.AllWallets() {
@@ -1104,6 +1153,13 @@ func (mgr *AssetsManager) RemoveAssetChange() {
 
 	// Remove listener on rate notification
 	mgr.RateSource.RemoveRateListener(assetIdentifier)
+}
+
+func (mgr *AssetsManager) RemoveAppNoticationListener() {
+	// Remove all listener on new tx notification
+	for _, wallet := range mgr.AllWallets() {
+		wallet.RemoveTxAndBlockNotificationListener(appIndentifier)
+	}
 }
 
 func (mgr *AssetsManager) BadgerDB() string {
