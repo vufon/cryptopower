@@ -39,6 +39,7 @@ const LogFilename = "cryptopower.log"
 
 // assetIdentifier use for listen balance of all wallet changed
 const assetIdentifier = "assets_manager"
+const appIndentifier = "app_notification"
 
 const BoltDB = "bdb"        // Bolt db driver
 const BadgerDB = "badgerdb" // Badger db driver
@@ -1060,11 +1061,11 @@ func (mgr *AssetsManager) DeleteDEXData() error {
 	return os.Remove(dexDBFile)
 }
 
-// Listener for new tx arrived
-func (mgr *AssetsManager) ListenForNewTx(listen func(int, *sharedW.Transaction)) {
+// Listener for balance change
+func (mgr *AssetsManager) ListenForBalanceChange(listen func()) {
 	txAndBlockNotificationListener := &sharedW.TxAndBlockNotificationListener{
 		OnTransaction: func(walletID int, transaction *sharedW.Transaction) {
-			listen(walletID, transaction)
+			listen()
 		},
 	}
 
@@ -1076,28 +1077,6 @@ func (mgr *AssetsManager) ListenForNewTx(listen func(int, *sharedW.Transaction))
 			}
 		}
 	}
-}
-
-// Listener for tx confirmed
-func (mgr *AssetsManager) ListenForTxConfirmed(listen func(int)) {
-	txAndBlockNotificationListener := &sharedW.TxAndBlockNotificationListener{
-		OnTransactionConfirmed: func(walletID int, _ string, _ int32) {
-			listen(walletID)
-		},
-	}
-
-	// add tx listener
-	for _, wallet := range mgr.AllWallets() {
-		if !wallet.IsNotificationListenerExist(assetIdentifier) {
-			if err := wallet.AddTxAndBlockNotificationListener(txAndBlockNotificationListener, assetIdentifier); err != nil {
-				log.Errorf("Can't listen tx and block notification for %s wallet", wallet.GetWalletName())
-			}
-		}
-	}
-}
-
-// Listener for rate change
-func (mgr *AssetsManager) ListenForRateChange(listen func()) {
 	// add rate listener
 	rateListener := &ext.RateListener{
 		OnRateUpdated: func() {
@@ -1107,6 +1086,24 @@ func (mgr *AssetsManager) ListenForRateChange(listen func()) {
 	if !mgr.RateSource.IsRateListenerExist(assetIdentifier) {
 		if err := mgr.RateSource.AddRateListener(rateListener, assetIdentifier); err != nil {
 			log.Error("Can't listen rate notification ")
+		}
+	}
+}
+
+// Listener for new tx arrived
+func (mgr *AssetsManager) ListenForAppNotification(listen func(int, *sharedW.Transaction)) {
+	txAndBlockNotificationListener := &sharedW.TxAndBlockNotificationListener{
+		OnTransaction: func(walletID int, transaction *sharedW.Transaction) {
+			listen(walletID, transaction)
+		},
+	}
+
+	// add tx listener
+	for _, wallet := range mgr.AllWallets() {
+		if !wallet.IsNotificationListenerExist(appIndentifier) {
+			if err := wallet.AddTxAndBlockNotificationListener(txAndBlockNotificationListener, appIndentifier); err != nil {
+				log.Errorf("Can't listen tx and block notification for %s wallet", wallet.GetWalletName())
+			}
 		}
 	}
 }
@@ -1149,6 +1146,13 @@ func (mgr *AssetsManager) RemoveAssetChange() {
 
 	// Remove listener on rate notification
 	mgr.RateSource.RemoveRateListener(assetIdentifier)
+}
+
+func (mgr *AssetsManager) RemoveAppNoticationListener() {
+	// Remove all listener on new tx notification
+	for _, wallet := range mgr.AllWallets() {
+		wallet.RemoveTxAndBlockNotificationListener(appIndentifier)
+	}
 }
 
 func (mgr *AssetsManager) BadgerDB() string {

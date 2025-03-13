@@ -738,16 +738,6 @@ func (swmp *SingleWalletMasterPage) listenForNotifications() {
 	txAndBlockNotificationListener := &sharedW.TxAndBlockNotificationListener{
 		OnTransaction: func(walletID int, transaction *sharedW.Transaction) {
 			swmp.updateBalance()
-			if swmp.AssetsManager.IsTransactionNotificationsOn() {
-				// TODO: SPV wallets only receive mempool tx ntfn for txs that
-				// were broadcast by the wallet. We should probably be posting
-				// desktop ntfns for txs received from external parties, which
-				// will can be gotten from the OnTransactionConfirmed callback.
-				notification, assetType := swmp.AssetsManager.GetWalletNotification(walletID, transaction)
-				if notification != "" {
-					utils.PostTransactionNotification(notification, assetType)
-				}
-			}
 			swmp.ParentWindow().Reload()
 		},
 		// OnBlockAttached is also called whenever OnTransactionConfirmed is
